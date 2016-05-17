@@ -3,7 +3,7 @@ var util = require('./lib/utility');
 var partials = require('express-partials');
 var bodyParser = require('body-parser');
 var session = require('express-session');
-
+var bcrypt = require('bcrypt-nodejs');
 
 var db = require('./app/config');
 var Users = require('./app/collections/users');
@@ -11,6 +11,7 @@ var User = require('./app/models/user');
 var Links = require('./app/collections/links');
 var Link = require('./app/models/link');
 var Click = require('./app/models/click');
+var FileStore = require('session-file-store')(session);
 
 var app = express();
 
@@ -27,10 +28,14 @@ app.use(session({
   secret: 'keyboard cat',
   resave: false, 
   saveUninitialized: true
+  // resave: true, 
+  // saveUninitialized: false,
+  // store: new FileStore()
 }));
 
 var restrict = function(req, res, next) {
   if (req.session.user) {
+    console.log('user session:', req.session.user);
     next();
   } else {
     req.session.error = 'Access Denied!';
@@ -41,6 +46,19 @@ var restrict = function(req, res, next) {
 app.get('/', restrict,
 function(req, res) {
   res.render('index');
+});
+
+app.get('/logout', function(req, res) {
+  console.log('session user:', req.session.user);
+  if (req.session.user) {
+    req.session.destroy(function(err) {
+      if (err) {
+        console.log('err', err);
+      } else {
+        res.redirect('/login');
+      }
+    });
+  }
 });
 
 app.get('/create', restrict,
@@ -91,10 +109,6 @@ function(req, res) {
 // Write your authentication routes here
 /************************************************************/
 
-
-// app.use(express.bodyParser());
-// app.use(express.cookieParser('shhhhhh'));
-
 app.get('/login', function(req, res) {
   res.render('login');
 });
@@ -103,17 +117,24 @@ app.post('/login', function(req, res) {
   var username = req.body.username;
   var password = req.body.password;
   console.log('user: ', req.body.username);
-  
-  User.where({username: username, password: password}).fetch().then(function(user) {
-    console.log('username:', user.attributes.username);
-    req.session.regenerate(function() {
-      req.session.user = username;
-      res.redirect('/');
+
+  User.where({username: username}).fetch().then(function(user) {
+    return user;
+  })
+  .then(function(user) {
+    bcrypt.compare(password + user.attributes.salt, user.attributes.hash, function(err, match) {
+      if (match) {
+        req.session.regenerate(function() {
+          req.session.user = username;
+          res.redirect('/');
+        }); 
+      } else {
+        res.redirect('/login');   
+      }
     });
   })
   .catch(function(err) {
     console.error('error:', err);
-    res.redirect('/login');
   });
 
 });
@@ -131,6 +152,7 @@ app.post('/signup', function(req, res) {
     if (found) {
       res.status(200).send(found.attributes);
     } else {
+
       Users.create({
         username: username,
         password: password
