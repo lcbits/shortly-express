@@ -108,12 +108,12 @@ app.post('/login', function(req, res) {
     console.log('username:', user.attributes.username);
     req.session.regenerate(function() {
       req.session.user = username;
-      res.redirect('index');
+      res.redirect('/');
     });
   })
   .catch(function(err) {
     console.error('error:', err);
-    res.redirect('signup');
+    res.redirect('/login');
   });
 
 });
@@ -123,36 +123,24 @@ app.get('/signup', function(req, res) {
   res.render('signup');
 });
 
-app.post('/signup', 
-function(req, res) {
+app.post('/signup', function(req, res) {
   var username = req.body.username;
   var password = req.body.password;
 
-  User.where('username', username).fetch().then(function(found) {
-    console.log('user already exists');
-    res.render(signup);
-    return res.sendStatus(404);
-  })
-  .catch(function(err) {
-    console.log('user has been create:', username);
-    return new User({ username: username, password: password }).save();
+  new User({ username: username, password: password }).fetch().then(function(found) {
+    if (found) {
+      res.status(200).send(found.attributes);
+    } else {
+      Users.create({
+        username: username,
+        password: password
+      })
+      .then(function() {
+        req.session.user = username;
+        res.redirect('/');
+      });
+    }
   });
-
-  // var userCheck = User.where('username', username).fetch();
-  // console.log('usercheck', userCheck);
-  // new User({ username: username, password: password }).fetch().then(function(found) {
-  //   if (found) {
-  //     res.status(200).send(found.attributes);
-  //   } else {
-
-  //       User.create({
-  //         username: username,
-  //         password: password
-  //       })
-  //       .save();
-  //   }
-  // });
-
 
 });
 
