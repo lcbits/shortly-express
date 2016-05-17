@@ -11,7 +11,6 @@ var User = require('./app/models/user');
 var Links = require('./app/collections/links');
 var Link = require('./app/models/link');
 var Click = require('./app/models/click');
-var FileStore = require('session-file-store')(session);
 
 var app = express();
 
@@ -27,15 +26,12 @@ app.use(express.static(__dirname + '/public'));
 app.use(session({
   secret: 'keyboard cat',
   resave: false, 
-  saveUninitialized: true
-  // resave: true, 
-  // saveUninitialized: false,
-  // store: new FileStore()
+  saveUninitialized: true,
 }));
 
 var restrict = function(req, res, next) {
   if (req.session.user) {
-    console.log('user session:', req.session.user);
+    console.log('user session:', req.session);
     next();
   } else {
     req.session.error = 'Access Denied!';
@@ -45,20 +41,20 @@ var restrict = function(req, res, next) {
 
 app.get('/', restrict,
 function(req, res) {
+  console.log('this is user', req.session.user);
+  // req.session.user = req.session.user;
   res.render('index');
 });
 
 app.get('/logout', function(req, res) {
   console.log('session user:', req.session.user);
-  if (req.session.user) {
-    req.session.destroy(function(err) {
-      if (err) {
-        console.log('err', err);
-      } else {
-        res.redirect('/login');
-      }
-    });
-  }
+  req.session.destroy(function(err) {
+    if (err) {
+      console.log('err', err);
+    } else {
+      res.redirect('/login');
+    }
+  });
 });
 
 app.get('/create', restrict,
@@ -124,10 +120,7 @@ app.post('/login', function(req, res) {
   .then(function(user) {
     bcrypt.compare(password + user.attributes.salt, user.attributes.hash, function(err, match) {
       if (match) {
-        req.session.regenerate(function() {
-          req.session.user = username;
-          res.redirect('/');
-        }); 
+        util.createSession(req, res, user);
       } else {
         res.redirect('/login');   
       }
@@ -149,18 +142,17 @@ app.post('/signup', function(req, res) {
   var password = req.body.password;
 
   new User({ username: username, password: password }).fetch().then(function(found) {
-    if (found) {
-      res.status(200).send(found.attributes);
-    } else {
-
-      Users.create({
+    if (!found) {
+      var newUser = new User({
         username: username,
         password: password
-      })
-      .then(function() {
-        req.session.user = username;
-        res.redirect('/');
       });
+      newUser.save()
+        .then(function(newUser) {
+          util.createSession(req, res, newUser);      
+        });
+    } else {
+      res.redirect('/signup');
     }
   });
 
